@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual Environment
+venv/
+env/
+.venv/
+
+# Models
+models/
+*.bin
+*.pt
+
+# Dataset
+dataset/
+*.csv
+*.tsv
+*.json
+*.jpg
+*.png
+
+# Training outputs
+results/
+tmp_trainer/
+runs/
+checkpoints/
+
+# Notebooks
+.ipynb_checkpoints/
+
+notebooks/MODEL_SAVE_PATH/
+*.safetensors
+
+# OS files
+.DS_Store
+
+# Logs
+*.log

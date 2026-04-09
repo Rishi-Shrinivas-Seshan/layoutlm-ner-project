@@ -1,0 +1,16 @@
+torch
+transformers
+accelerate
+
+evaluate
+seqeval
+
+tensorboard
+setuptools==69.5.1
+
+pandas
+numpy
+pillow
+
+paddleocr
+paddlepaddle
