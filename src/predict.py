@@ -3,7 +3,7 @@ import torch
 import pandas as pd
 from collections import defaultdict
 from transformers import LayoutLMForTokenClassification, LayoutLMTokenizer, Trainer
-
+import json
 from dataset import LayoutLMDataset
 from preprocess import process_document
 from chunking import split_data_into_chunks
@@ -113,6 +113,31 @@ def validate_predictions(output, tsv_dir):
 
         assert len(df) == len(preds), f"Length mismatch in {doc_id}"
 
+# Function to summarize entity predictions
+def summarize_output(output):
+
+    summarized = []
+
+    for item in output:
+
+        entity_counts = {}
+
+        for label in item["predictions"]:
+
+            if label != "OTHER":
+
+                if label not in entity_counts:
+                    entity_counts[label] = 1
+                else:
+                    entity_counts[label] += 1
+
+        summarized.append({
+            "file_name": item["file_name"],
+            "entities_found": entity_counts
+        })
+
+    return summarized
+
 if __name__ == "__main__":
 
     # Dataset paths for directories containing the TSV files and corresponding images of test data
@@ -138,13 +163,13 @@ if __name__ == "__main__":
 
     print("Validating predictions...")
     validate_predictions(output, TEST_TSV_DIR)
-
-    print("\nSample Predictions:")
     
-    # Display output only of the first two for sample
-    # Use print(output) to view the whole
-    print(output[:2])
+    print("\nSample Predictions:")
+    print(json.dumps(output[:1], indent=2))
 
-    # OPTIONAL UPGRADE : To better view the output 
-    import json
-    print(json.dumps(output[:2], indent=2))
+    summary = summarize_output(output)
+
+    print("\nSummarized Predictions:\n")
+    print(json.dumps(summary[:1], indent=4))
+
+    print("\nFinal Output: Successfully computed")
