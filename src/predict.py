@@ -138,6 +138,33 @@ def summarize_output(output):
 
     return summarized
 
+def extract_entities(documents, final_output):
+
+    extracted = []
+
+    for doc, pred in zip(documents, final_output):
+
+        original_words = doc["words"]
+        preds = pred["predictions"]
+
+        entity_dict = {}
+
+        for word, label in zip(original_words, preds):
+
+            if label != "OTHER":
+
+                if label not in entity_dict:
+                    entity_dict[label] = word
+                else:
+                    entity_dict[label] += " " + word
+
+        extracted.append({
+            "file_name": doc["id"],
+            "extracted_entities": entity_dict
+        })
+
+    return extracted
+
 if __name__ == "__main__":
 
     # Dataset paths for directories containing the TSV files and corresponding images of test data
@@ -171,5 +198,9 @@ if __name__ == "__main__":
 
     print("\nSummarized Predictions:\n")
     print(json.dumps(summary[:1], indent=4))
+
+    recognized_entities = extract_entities(documents, output)
+    print("\nExtracted Entities:")
+    print(json.dumps(recognized_entities[:1], indent=4))
 
     print("\nFinal Output: Successfully computed")

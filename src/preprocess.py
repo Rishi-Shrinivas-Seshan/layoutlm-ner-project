@@ -82,7 +82,8 @@ def process_document(tsv_file, image_file, tokenizer, label2id=None):
         "id": os.path.basename(tsv_file).split('.')[0],  # Use the file name as the document ID
         "input_ids": torch.tensor(input_ids),
         "bbox": torch.tensor(token_bboxes),
-        "attention_mask": torch.tensor(attention_mask)
+        "attention_mask": torch.tensor(attention_mask),
+        "words": words
     }
 
     if token_labels is not None:
