@@ -5,9 +5,10 @@ from collections import defaultdict
 from transformers import LayoutLMForTokenClassification, LayoutLMTokenizer, Trainer
 import json
 from dataset import LayoutLMDataset
+from adapters.w2_adapter import load_w2_document
 from preprocess import process_document
 from chunking import split_data_into_chunks
-from config import id2label
+from configs.w2_config import id2label
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -29,7 +30,8 @@ def load_test_documents(tsv_dir, image_dir):
             image_path = os.path.join(image_dir, image_name)
 
             if os.path.exists(image_path):
-                document = process_document(tsv_path, image_path, tokenizer=tokenizer, label2id=None)
+                df = load_w2_document(tsv_path)
+                document = process_document(df, tsv_path, image_path, tokenizer=tokenizer, label2id=None)
                 documents.append(document)
             else:
                 print(f"Image for {tsv_file} not found.")
@@ -55,7 +57,7 @@ def run_prediction(test_dataset):
     return predicted_entities
 
 # Function to reconstruct the predictions
-def recombine_predictions(chunked_docs, predicted_entities):
+def recombine_predictions(documents, chunked_docs, predicted_entities):
 
     grouped_preds = defaultdict(list)
 
@@ -63,33 +65,33 @@ def recombine_predictions(chunked_docs, predicted_entities):
         grouped_preds[item['id']].append({
             "chunk_idx": item['chunk_idx'],
             "predictions": pred,
-            "attention_mask": item['attention_mask'],
-            "bbox": item['bbox']
+            "attention_mask": item['attention_mask']
         })
 
     final_output = []
 
+    # Create a Dictionary converting the List of Documents into a lookup
+    doc_map = {doc["id"]: doc for doc in documents}
+
     for doc_id in grouped_preds:
 
+        token_word_ids = doc_map[doc_id]["word_ids"]
         chunks = sorted(grouped_preds[doc_id], key=lambda x: x['chunk_idx'])
 
         combined_preds = []
         combined_masks = []
-        combined_bbox = []
 
         for chunk in chunks:
             combined_preds.extend(chunk["predictions"])
             combined_masks.extend(chunk["attention_mask"].tolist())
-            combined_bbox.extend(chunk["bbox"].tolist())
 
         # Strip the padded zeros in the merged documents using attention mask
         cleaned_preds = [prediction for prediction, mask in zip(combined_preds, combined_masks) if mask==1]
-        cleaned_bbox = [box for box, mask in zip(combined_bbox, combined_masks) if mask==1]
 
         # Detokenize - tokenization splits the words into subwords
-        # Dropping the duplicates using the bbox will match the length of the original list of words
-        df = pd.DataFrame({"pred": cleaned_preds, "bbox": cleaned_bbox})
-        df = df.drop_duplicates(subset=["bbox"])
+        # Dropping the duplicates using the word IDs will match the length of the original list of words
+        df = pd.DataFrame({"pred": cleaned_preds, "word_id": token_word_ids})
+        df = df.drop_duplicates(subset=["word_id"])
 
         # Format the final output by associating the predictions with its corresponding file name
         final_preds = df["pred"].tolist()
@@ -184,7 +186,7 @@ if __name__ == "__main__":
     predictions = run_prediction(dataset)
 
     print("Reconstructing predictions...")
-    output = recombine_predictions(chunked_docs, predictions)
+    output = recombine_predictions(documents, chunked_docs, predictions)
 
     print("\nInference complete")
 

@@ -10,9 +10,8 @@ The model incorporates the layout information in the token representation itself
 ## Key Components
 
 ### 1. Data Preparation
-- Fetch & load the raw image and its spatial data
+- Normalize dataset-specific schemas using adapters
 - Standardize (scaling, rounding, clipping, and conversion to integer coordinates)
-- Clean data by dropping index columns & duplicate rows
 
 ### 2. Tokenization & Encoding
 - Map labels to its numerical IDs
@@ -32,7 +31,8 @@ The model incorporates the layout information in the token representation itself
 ### 5. Inference & Reconstruction
 - Group prediction chunks belonging to same file by document ID
 - Merge the chunk predictions in sorted order using chunk indices
-- Remove padding & de-tokenize using bounding box deduplication of subword tokens
+- Remove padding tokens using attention masks
+- Reconstruct original OCR words using explicit token-to-word alignment IDs
 
 ### 6. Validation
 - Ensure alignment between raw data and predictions by checking for length mismatch
@@ -59,6 +59,13 @@ The model incorporates the layout information in the token representation itself
 - Separate preprocessing logics for training and testing data led to code duplication because labels existed only in train data.
 - This was refactored into a single pipeline in which labels were treated as optional, allowing both train & inference data to pass through the same sequence of steps.
 
+### Explicit token-to-word alignment
+- Earlier reconstruction logic relied on bounding box deduplication to merge subword predictions back into original OCR words.
+- However, this could incorrectly merge actual OCR duplicate rows because identical bounding boxes were treated as the same token.
+- To avoid this, word alignment IDs are now tracked during tokenization.
+- Each subword token stores the index of the original OCR word it came from.
+- This allows reconstruction using token-word alignment instead of spatial heuristics.
+
 ---
 
 ## Project Structure
@@ -67,13 +74,18 @@ The model incorporates the layout information in the token representation itself
 layoutlm-ner-project/
 │
 ├── src/
+│   ├── adapters/          # Dataset normalizers
+│   │   ├── w2_adapter.py
+│   │
+│   ├── configs/           # Labels and mappings
+│   │   ├── w2_config.py
+│   │
 │   ├── train.py           # Training pipeline
 │   ├── predict.py         # Inference pipeline
 │   ├── preprocess.py      # TSV → tokens + bbox processing
 │   ├── metrics.py         # Evaluation metrics
 │   ├── chunking.py        # Chunking logic (512 tokens)
 │   ├── dataset.py         # PyTorch Dataset wrapper
-│   ├── config.py          # Labels and mappings
 │
 ├── notebooks/             # Notebook version of the full pipeline
 │   └── named_entity_recognition_layoutlm.ipynb
@@ -137,13 +149,13 @@ Each `.tsv` file should contain:
 ### Training Flow
 
 ```
-TSV → preprocess → chunk → dataset → LayoutLM → training
+TSV → adapter → preprocess → chunk → dataset → LayoutLM → training
 ```
 
 ### Inference Flow
 
 ```
-TSV → preprocess → chunk → dataset → predict → recombine → detokenize → output
+TSV → adapter → preprocess → chunk → dataset → predict → recombine → reconstruct → output
 ```
 
 ---
@@ -183,6 +195,20 @@ Predictions are returned as:
 ]
 ```
 
+Reconstructed key-value output:
+
+```json
+[
+  {
+    "file_name": "doc1",
+    "entities": {
+      "InvoiceNo": ["INV-1024"],
+      "InvoiceDate": ["2024-05-01"],
+      "VendorName": ["ABC Pvt Ltd"]
+    }
+  }
+]
+```
 ---
 
 ## Important Notes
@@ -210,8 +236,8 @@ Predictions are returned as:
 ### Integrate OCR
 - Extract the text fields and their bounding boxes directly from images.
 
-### Dataset agnostic pipeline
-- Support multiple input formats beyond TSV like JSON, raw OCR output.
+### Multi-dataset support
+- Extend the adapter-based pipeline to support datasets like SROIE and raw OCR outputs.
 
 ### Improved chunking strategies
 - Sliding window enhances better boundary context handling, when an entity gets split across chunks.

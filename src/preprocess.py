@@ -1,12 +1,9 @@
 import os
-import pandas as pd
 from PIL import Image
 import torch
 
 # Function to process a single document of TRAINING
-def process_document(tsv_file, image_file, tokenizer, label2id=None):
-    # Read the TSV file into a pandas dataframe
-    df = pd.read_csv(tsv_file, header=None)
+def process_document(df, tsv_file, image_file, tokenizer, label2id=None):
 
     # Read the image to get its dimensions (optional for LayoutLM v1)
     image = Image.open(image_file)
@@ -14,15 +11,6 @@ def process_document(tsv_file, image_file, tokenizer, label2id=None):
 
     x_scale = 1000 / width
     y_scale = 1000 / height
-
-    # Add a header (column names)
-    if len(df.columns) == 8:
-        df.columns = ['start_index', 'end_index', 'x1', 'y1', 'x2', 'y2', 'text', 'label']
-    else:
-        df.columns = ['start_index', 'end_index', 'x1', 'y1', 'x2', 'y2', 'text']
-    
-    # Drop the 'start_index' and 'end_index' columns
-    df = df.drop(columns=['start_index', 'end_index'])
 
     # Scaling the bounding boxes to fit the image of size 1000x1000
     df[['x1', 'x2']] = df[['x1', 'x2']] * x_scale
@@ -39,9 +27,6 @@ def process_document(tsv_file, image_file, tokenizer, label2id=None):
     # Convert the 'text' column to string type for tokenizer to work without error
     df['text'] = df['text'].astype(str)
 
-    # Drop duplicates based on bounding boxes columns
-    df = df.drop_duplicates(subset=['x1', 'y1', 'x2', 'y2', 'text'], keep='first')
-
     words = df['text'].tolist()
     bboxes = df[['x1', 'y1', 'x2', 'y2']].values.tolist()
     
@@ -53,16 +38,19 @@ def process_document(tsv_file, image_file, tokenizer, label2id=None):
         labels = None
 
     tokenized_words = []
+    word_ids = []
     token_bboxes = []
     token_labels = [] if labels is not None else None
 
-    # Process each word in the document
+    # Tokenize & Process each word in the document
     for i, (word, bbox) in enumerate(zip(words, bboxes)):
         word = str(word)
         # Tokenize the word
         tokenized_word = tokenizer.tokenize(word)
         tokenized_words.extend(tokenized_word)
 
+        # Add the original word's index for each of it's subwords
+        word_ids.extend([i] * len(tokenized_word))
         # Add the same bounding box for each subword
         token_bboxes.extend([bbox] * len(tokenized_word))
 
@@ -83,7 +71,8 @@ def process_document(tsv_file, image_file, tokenizer, label2id=None):
         "input_ids": torch.tensor(input_ids),
         "bbox": torch.tensor(token_bboxes),
         "attention_mask": torch.tensor(attention_mask),
-        "words": words
+        "words": words,
+        "word_ids": torch.tensor(word_ids)
     }
 
     if token_labels is not None:

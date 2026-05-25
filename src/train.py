@@ -1,4 +1,5 @@
 import os
+from adapters.w2_adapter import load_w2_document
 from preprocess import process_document
 from transformers import LayoutLMTokenizer
 from dataset import LayoutLMDataset
@@ -9,7 +10,7 @@ from chunking import split_data_into_chunks
 from transformers import DataCollatorForTokenClassification
 from functools import partial
 from metrics import compute_metrics
-from config import entity_labels, label2id, id2label
+from configs.w2_config import entity_labels, label2id, id2label
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -31,7 +32,8 @@ for tsv_file in os.listdir(TRAIN_TSV_DIR):
         image_path = os.path.join(TRAIN_IMAGE_DIR, image_name)
 
         if os.path.exists(image_path):
-            document = process_document(tsv_path, image_path, tokenizer, label2id)
+            df = load_w2_document(tsv_path)
+            document = process_document(df, tsv_path, image_path, tokenizer, label2id)
             all_documents.append(document)
         else:
             print(f"Image for {tsv_file} not found.")
