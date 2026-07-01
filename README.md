@@ -10,7 +10,8 @@ The model incorporates the layout information in the token representation itself
 ## Key Components
 
 ### 1. Data Preparation
-- Normalize dataset-specific schemas using adapters
+- Convert raw datasets into the folder structure expected by the pipeline
+- Canonicalize dataset-specific schemas using adapters
 - Standardize (scaling, rounding, clipping, and conversion to integer coordinates)
 
 ### 2. Tokenization & Encoding
@@ -66,6 +67,13 @@ The model incorporates the layout information in the token representation itself
 - Each subword token stores the index of the original OCR word it came from.
 - This allows reconstruction using token-word alignment instead of spatial heuristics.
 
+### Adapter-based dataset integration
+- Different datasets often use different annotation formats and label schemas.
+- To avoid modifying the training and inference pipelines for every dataset, dataset-specific logic is isolated inside adapters and configuration files.
+- Conversion scripts are responsible only for transforming the original annotation format (JSON, TXT, etc.) into a common TSV representation while preserving all available information.
+- Adapters normalize the raw annotations into a common dataframe schema, while configuration files define the entity labels and mappings.
+- This allows the core preprocessing, chunking, training and prediction logic to remain unchanged across datasets.
+
 ---
 
 ## Project Structure
@@ -76,9 +84,14 @@ layoutlm-ner-project/
 ├── src/
 │   ├── adapters/          # Dataset normalizers
 │   │   ├── w2_adapter.py
+│   │   ├── fatura_adapter.py
 │   │
 │   ├── configs/           # Labels and mappings
 │   │   ├── w2_config.py
+│   │   ├── fatura_config.py
+│   │
+│   ├── data_preparation/  # Dataset conversion scripts
+│   │   ├── convert_fatura_dataset.py
 │   │
 │   ├── train.py           # Training pipeline
 │   ├── predict.py         # Inference pipeline
@@ -108,9 +121,33 @@ layoutlm-ner-project/
 
 ---
 
+## Dataset Preparation
+
+The training and inference pipelines expect datasets to follow a standard folder structure.
+
+The conversion scripts currently expect the raw datasets to be placed in a directories following the naming convention:
+
+FATURA_dataset/
+SROIE_dataset/
+FUNSD_dataset/
+
+The conversion scripts transform the raw dataset into the standard dataset folder structure expected by the pipeline.
+
+The conversion scripts are located in:
+
+src/data_preparation/
+
+Example:
+
+python -m src.data_preparation.convert_fatura_dataset
+
+This generates the required .tsv files and copies the corresponding images into the expected dataset structure.
+
+---
+
 ## Dataset Format
 
-This project expects the dataset in the following structure:
+This project expects the dataset in the following directory layout:
 
 ```
 dataset/
@@ -130,12 +167,12 @@ dataset/
       doc2.jpg
 ```
 
-### TSV Format
+### Canonical TSV Format
 
 Each `.tsv` file should contain:
 
 ```
-[start_index, end_index, x1, y1, x2, y2, text, label]
+[x1, y1, x2, y2, text, label]
 ```
 
 - `x1, y1, x2, y2` → bounding box coordinates  
@@ -146,16 +183,22 @@ Each `.tsv` file should contain:
 
 ## Workflow
 
+### Data Preparation
+
+```
+Raw Dataset → Dataset Conversion → Canonical Dataset
+```
+
 ### Training Flow
 
 ```
-TSV → adapter → preprocess → chunk → dataset → LayoutLM → training
+Canonical Dataset → Adapter → Preprocess → Chunk → Dataset Wrapper → LayoutLM → Training
 ```
 
 ### Inference Flow
 
 ```
-TSV → adapter → preprocess → chunk → dataset → predict → recombine → reconstruct → output
+Canonical Dataset → Adapter → Preprocess → Chunk → Dataset Wrapper → Predict → Recombine → Reconstruct → Output
 ```
 
 ---
@@ -168,13 +211,19 @@ TSV → adapter → preprocess → chunk → dataset → predict → recombine �
 pip install -r requirements.txt
 ```
 
-### 2. Train the model
+### 2. Prepare Dataset
+
+```bash
+python -m src.data_preparation.convert_fatura_dataset
+```
+
+### 3. Train the model
 
 ```bash
 python src/train.py
 ```
 
-### 3. Run inference
+### 4. Run inference
 
 ```bash
 python src/predict.py
@@ -213,11 +262,13 @@ Reconstructed key-value output:
 
 ## Important Notes
 
-- The dataset used in development is **not included** due to confidentiality.
-- Replace the dataset paths with your own data following the expected format.
+- Raw datasets are not included in this repository.
+- Dataset conversion must be executed before training.
 - The model assumes OCR tokens and bounding boxes are already available.
 - Input documents should follow a consistent structure (e.g., invoices) for reliable performance.
 - File naming consistency between images and corresponding annotation files is expected.
+- Bounding box coordinates are scaled into LayoutLM's expected 0-1000 coordinate space during preprocessing.
+- TSV files are loaded using keep_default_na=False to preserve OCR values such as "N/A".
 
 ---
 
@@ -236,9 +287,6 @@ Reconstructed key-value output:
 ### Integrate OCR
 - Extract the text fields and their bounding boxes directly from images.
 
-### Multi-dataset support
-- Extend the adapter-based pipeline to support datasets like SROIE and raw OCR outputs.
-
 ### Improved chunking strategies
 - Sliding window enhances better boundary context handling, when an entity gets split across chunks.
 
@@ -251,8 +299,8 @@ Reconstructed key-value output:
 ### Custom training loop
 - Define a customized training function and remove dependency on Trainer API to gain more control over training and evaluation.
 
-### Output formatting
-- Structure the output in various expressive formats like key-value extraction, summarize the frequency of labels, and pictorial representation.
+### Additional dataset integrations
+- Extend the conversion and adapter framework to additional document understanding datasets.
 
 ### Upgrade to LayoutLM v2
 - Visually rich features like logos/seals from the documents can be captured by upgrading to image aware models.
@@ -264,5 +312,35 @@ Reconstructed key-value output:
 
 ## Acknowledgements
 
-- HuggingFace Transformers  
-- Microsoft LayoutLM  
+This project builds upon the following open-source libraries, models, and publicly available datasets.
+
+### Frameworks & Models
+
+- HuggingFace Transformers
+- Microsoft LayoutLM
+
+### Datasets
+
+**FATURA Dataset**
+
+> Limam, M., Dhiaf, M., & Kessentini, Y. (2023). *FATURA Dataset* [Data set]. Zenodo. https://doi.org/10.5281/zenodo.10371464
+
+---
+
+**SROIE Dataset**
+
+> Huang, Z., Chen, K., He, J., Bai, X., Karatzas, D., Lu, S., Jawahar, C. V., & Qiao, Y. (2019). *ICDAR2019 Competition on Scanned Receipt OCR and Information Extraction*. Proceedings of the 2019 International Conference on Document Analysis and Recognition (ICDAR), 1516–1520. https://doi.org/10.1109/ICDAR.2019.00244
+
+---
+
+**FUNSD Dataset**
+
+> Jaume, G., Ekenel, H. K., & Thiran, J.-P. (2019). *FUNSD: A Dataset for Form Understanding in Noisy Scanned Documents*. Accepted to ICDAR Workshop on Open Services and Tools for Document Analysis (ICDAR-OST).
+
+---
+
+The authors of the above datasets are gratefully acknowledged for making their work publicly available and enabling reproducible research in document understanding.
+The dataset itself is not distributed with this repository and should be obtained from the original source provided by the authors.
+If you use the datasets, please cite the original authors.
+
+---

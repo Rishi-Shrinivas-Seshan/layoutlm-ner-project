@@ -4,11 +4,12 @@ import pandas as pd
 from collections import defaultdict
 from transformers import LayoutLMForTokenClassification, LayoutLMTokenizer, Trainer
 import json
+import csv
 from dataset import LayoutLMDataset
-from adapters.w2_adapter import load_w2_document
+from adapters.fatura_adapter import load_fatura_document
 from preprocess import process_document
 from chunking import split_data_into_chunks
-from configs.w2_config import id2label
+from configs.fatura_config import id2label, background_label
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -30,7 +31,7 @@ def load_test_documents(tsv_dir, image_dir):
             image_path = os.path.join(image_dir, image_name)
 
             if os.path.exists(image_path):
-                df = load_w2_document(tsv_path)
+                df = load_fatura_document(tsv_path, include_labels=False)
                 document = process_document(df, tsv_path, image_path, tokenizer=tokenizer, label2id=None)
                 documents.append(document)
             else:
@@ -109,7 +110,7 @@ def validate_predictions(output, tsv_dir):
         doc_id = tsv_file.split('.')[0]
 
         tsv_path = os.path.join(tsv_dir, tsv_file)
-        df = pd.read_csv(tsv_path, header=None)
+        df = pd.read_csv(tsv_path, sep="\t", header=None, quoting=csv.QUOTE_NONE, keep_default_na=False)
 
         preds = pred_map.get(doc_id)
 
@@ -153,7 +154,7 @@ def extract_entities(documents, final_output):
 
         for word, label in zip(original_words, preds):
 
-            if label != "OTHER":
+            if label != background_label:
 
                 if label not in entity_dict:
                     entity_dict[label] = word

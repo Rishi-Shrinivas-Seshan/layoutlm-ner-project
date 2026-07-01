@@ -13,20 +13,26 @@ env/
 models/
 *.bin
 *.pt
+*.safetensors
 
-# Dataset
+# Raw datasets
+w2_dataset/
+FATURA_dataset/
+SROIE_dataset/
+FUNSD_dataset/
+
+# Generated Dataset
 dataset/
-*.csv
-*.tsv
-*.json
-*.jpg
-*.png
 
 # Training outputs
 results/
 tmp_trainer/
+tmp_eval/
 runs/
 checkpoints/
+
+# Experiments (temporary analysis scripts)
+experiments/
 
 # Notebooks
 .ipynb_checkpoints/
