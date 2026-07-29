@@ -6,10 +6,11 @@ from transformers import LayoutLMForTokenClassification, LayoutLMTokenizer, Trai
 import json
 import csv
 from dataset import LayoutLMDataset
-from adapters.fatura_adapter import load_fatura_document
+from adapters.sroie_adapter import load_sroie_document
 from preprocess import process_document
 from chunking import split_data_into_chunks
-from configs.fatura_config import id2label, background_label
+from configs.sroie_config import id2label
+from formatters.sroie_formatter import format_sroie_entities
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -31,7 +32,7 @@ def load_test_documents(tsv_dir, image_dir):
             image_path = os.path.join(image_dir, image_name)
 
             if os.path.exists(image_path):
-                df = load_fatura_document(tsv_path, include_labels=False)
+                df = load_sroie_document(tsv_path, include_labels=False)
                 document = process_document(df, tsv_path, image_path, tokenizer=tokenizer, label2id=None)
                 documents.append(document)
             else:
@@ -116,58 +117,6 @@ def validate_predictions(output, tsv_dir):
 
         assert len(df) == len(preds), f"Length mismatch in {doc_id}"
 
-# Function to summarize entity predictions
-def summarize_output(output):
-
-    summarized = []
-
-    for item in output:
-
-        entity_counts = {}
-
-        for label in item["predictions"]:
-
-            if label != "OTHER":
-
-                if label not in entity_counts:
-                    entity_counts[label] = 1
-                else:
-                    entity_counts[label] += 1
-
-        summarized.append({
-            "file_name": item["file_name"],
-            "entities_found": entity_counts
-        })
-
-    return summarized
-
-def extract_entities(documents, final_output):
-
-    extracted = []
-
-    for doc, pred in zip(documents, final_output):
-
-        original_words = doc["words"]
-        preds = pred["predictions"]
-
-        entity_dict = {}
-
-        for word, label in zip(original_words, preds):
-
-            if label != background_label:
-
-                if label not in entity_dict:
-                    entity_dict[label] = word
-                else:
-                    entity_dict[label] += " " + word
-
-        extracted.append({
-            "file_name": doc["id"],
-            "extracted_entities": entity_dict
-        })
-
-    return extracted
-
 if __name__ == "__main__":
 
     # Dataset paths for directories containing the TSV files and corresponding images of test data
@@ -197,13 +146,6 @@ if __name__ == "__main__":
     print("\nSample Predictions:")
     print(json.dumps(output[:1], indent=2))
 
-    summary = summarize_output(output)
-
-    print("\nSummarized Predictions:\n")
-    print(json.dumps(summary[:1], indent=4))
-
-    recognized_entities = extract_entities(documents, output)
-    print("\nExtracted Entities:")
-    print(json.dumps(recognized_entities[:1], indent=4))
+    format_sroie_entities(documents, output)
 
     print("\nFinal Output: Successfully computed")

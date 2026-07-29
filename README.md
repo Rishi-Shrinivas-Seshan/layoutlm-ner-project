@@ -34,6 +34,7 @@ The model incorporates the layout information in the token representation itself
 - Merge the chunk predictions in sorted order using chunk indices
 - Remove padding tokens using attention masks
 - Reconstruct original OCR words using explicit token-to-word alignment IDs
+- Apply dataset-specific output formatters for post-processing
 
 ### 6. Validation
 - Ensure alignment between raw data and predictions by checking for length mismatch
@@ -74,6 +75,12 @@ The model incorporates the layout information in the token representation itself
 - Adapters normalize the raw annotations into a common dataframe schema, while configuration files define the entity labels and mappings.
 - This allows the core preprocessing, chunking, training and prediction logic to remain unchanged across datasets.
 
+### Dataset-specific output formatting
+- Different datasets may require different post-processing after token-level prediction.
+- Instead of having dataset-specific reconstruction logic inside the inference pipeline, output formatting is done by formatter modules.
+- Each formatter is responsible for reconstructing entities and performing any dataset-specific cleanup.
+- This keeps the prediction pipeline dataset-agnostic while allowing individual datasets to customize their output representation separately.
+
 ---
 
 ## Project Structure
@@ -85,13 +92,22 @@ layoutlm-ner-project/
 │   ├── adapters/          # Dataset normalizers
 │   │   ├── w2_adapter.py
 │   │   ├── fatura_adapter.py
+│   │   ├── sroie_adapter.py
 │   │
 │   ├── configs/           # Labels and mappings
 │   │   ├── w2_config.py
 │   │   ├── fatura_config.py
+│   │   ├── sroie_config.py
 │   │
 │   ├── data_preparation/  # Dataset conversion scripts
 │   │   ├── convert_fatura_dataset.py
+│   │   ├── convert_sroie_dataset.py
+│   │
+│   ├── formatters/            # Dataset-specific output formatting
+│   │   ├── w2_formatter.py
+│   │   ├── fatura_formatter.py
+│   │   ├── sroie_formatter.py
+│   │
 │   │
 │   ├── train.py           # Training pipeline
 │   ├── predict.py         # Inference pipeline
@@ -140,6 +156,8 @@ src/data_preparation/
 Example:
 
 python -m src.data_preparation.convert_fatura_dataset
+
+python -m src.data_preparation.convert_sroie_dataset
 
 This generates the required .tsv files and copies the corresponding images into the expected dataset structure.
 
@@ -198,7 +216,7 @@ Canonical Dataset → Adapter → Preprocess → Chunk → Dataset Wrapper → L
 ### Inference Flow
 
 ```
-Canonical Dataset → Adapter → Preprocess → Chunk → Dataset Wrapper → Predict → Recombine → Reconstruct → Output
+Canonical Dataset → Adapter → Preprocess → Chunk → Dataset Wrapper → Predict → Recombine → Formatter → Output
 ```
 
 ---
@@ -215,6 +233,11 @@ pip install -r requirements.txt
 
 ```bash
 python -m src.data_preparation.convert_fatura_dataset
+```
+or
+
+```bash
+python -m src.data_preparation.convert_sroie_dataset
 ```
 
 ### 3. Train the model
@@ -246,6 +269,8 @@ Predictions are returned as:
 
 Reconstructed key-value output:
 
+The final output structure is based on dataset-specific formatter modules.
+
 ```json
 [
   {
@@ -269,6 +294,7 @@ Reconstructed key-value output:
 - File naming consistency between images and corresponding annotation files is expected.
 - Bounding box coordinates are scaled into LayoutLM's expected 0-1000 coordinate space during preprocessing.
 - TSV files are loaded using keep_default_na=False to preserve OCR values such as "N/A".
+- Formatter modules reconstruct entities from token-level predictions and present them after applying dataset-specific post-processing.
 
 ---
 
@@ -300,7 +326,7 @@ Reconstructed key-value output:
 - Define a customized training function and remove dependency on Trainer API to gain more control over training and evaluation.
 
 ### Additional dataset integrations
-- Extend the conversion and adapter framework to additional document understanding datasets.
+- Extend the conversion, adapter and formatter framework to additional document understanding datasets.
 
 ### Upgrade to LayoutLM v2
 - Visually rich features like logos/seals from the documents can be captured by upgrading to image aware models.

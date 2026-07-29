@@ -4,7 +4,7 @@ import csv
 # Transform the dataset into canonical schema of the pipeline
 def load_w2_document(tsv_file, include_labels=True):
 
-    df = pd.read_csv(tsv_file, sep="\t", header=None, quoting=csv.QUOTE_NONE, keep_default_na=False)
+    df = pd.read_csv(tsv_file, header=None, keep_default_na=False)
 
     # Add a header (column names)
     if len(df.columns) == 8:
