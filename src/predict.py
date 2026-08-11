@@ -6,11 +6,11 @@ from transformers import LayoutLMForTokenClassification, LayoutLMTokenizer, Trai
 import json
 import csv
 from dataset import LayoutLMDataset
-from adapters.sroie_adapter import load_sroie_document
+from adapters.funsd_adapter import load_funsd_document
 from preprocess import process_document
 from chunking import split_data_into_chunks
-from configs.sroie_config import id2label
-from formatters.sroie_formatter import format_sroie_entities
+from configs.funsd_config import id2label
+from formatters.funsd_formatter import format_funsd_entities
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -28,15 +28,21 @@ def load_test_documents(tsv_dir, image_dir):
     for tsv_file in os.listdir(tsv_dir):
         if tsv_file.endswith('.tsv'):
             tsv_path = os.path.join(tsv_dir, tsv_file)
-            image_name = tsv_file.replace('.tsv', '.jpg')  # for images that are .jpg, adjust if necessary
-            image_path = os.path.join(image_dir, image_name)
 
-            if os.path.exists(image_path):
-                df = load_sroie_document(tsv_path, include_labels=False)
-                document = process_document(df, tsv_path, image_path, tokenizer=tokenizer, label2id=None)
-                documents.append(document)
+            jpg_path = os.path.join(image_dir, tsv_file.replace('.tsv', '.jpg'))
+            png_path = os.path.join(image_dir, tsv_file.replace('.tsv', '.png'))
+
+            if os.path.exists(jpg_path):
+                image_path = jpg_path
+            elif os.path.exists(png_path):
+                image_path = png_path
             else:
                 print(f"Image for {tsv_file} not found.")
+                continue
+
+            df = load_funsd_document(tsv_path, include_labels=False)
+            document = process_document(df, tsv_path, image_path, tokenizer=tokenizer, label2id=None)
+            documents.append(document)
 
     return documents
 
@@ -111,7 +117,8 @@ def validate_predictions(output, tsv_dir):
         doc_id = tsv_file.split('.')[0]
 
         tsv_path = os.path.join(tsv_dir, tsv_file)
-        df = pd.read_csv(tsv_path, sep="\t", header=None, quoting=csv.QUOTE_NONE, keep_default_na=False)
+
+        df = load_funsd_document(tsv_path, include_labels=False)
 
         preds = pred_map.get(doc_id)
 
@@ -135,10 +142,10 @@ if __name__ == "__main__":
     print("Running inference...")
     predictions = run_prediction(dataset)
 
+    print("\nInference complete")
+
     print("Reconstructing predictions...")
     output = recombine_predictions(documents, chunked_docs, predictions)
-
-    print("\nInference complete")
 
     print("Validating predictions...")
     validate_predictions(output, TEST_TSV_DIR)
@@ -146,6 +153,6 @@ if __name__ == "__main__":
     print("\nSample Predictions:")
     print(json.dumps(output[:1], indent=2))
 
-    format_sroie_entities(documents, output)
+    format_funsd_entities(documents, output)
 
     print("\nFinal Output: Successfully computed")

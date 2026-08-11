@@ -1,5 +1,5 @@
 import os
-from adapters.sroie_adapter import load_sroie_document
+from adapters.funsd_adapter import load_funsd_document
 from preprocess import process_document
 from transformers import LayoutLMTokenizer
 from dataset import LayoutLMDataset
@@ -10,7 +10,7 @@ from chunking import split_data_into_chunks
 from transformers import DataCollatorForTokenClassification
 from functools import partial
 from metrics import compute_metrics
-from configs.sroie_config import entity_labels, label2id, id2label
+from configs.funsd_config import entity_labels, label2id, id2label
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -28,15 +28,21 @@ all_documents = []
 for tsv_file in os.listdir(TRAIN_TSV_DIR):
     if tsv_file.endswith('.tsv'):
         tsv_path = os.path.join(TRAIN_TSV_DIR, tsv_file)
-        image_name = tsv_file.replace('.tsv', '.jpg')  # for images that are .jpg, adjust if necessary
-        image_path = os.path.join(TRAIN_IMAGE_DIR, image_name)
 
-        if os.path.exists(image_path):
-            df = load_sroie_document(tsv_path, include_labels=True)
-            document = process_document(df, tsv_path, image_path, tokenizer, label2id)
-            all_documents.append(document)
+        jpg_path = os.path.join(TRAIN_IMAGE_DIR, tsv_file.replace('.tsv', '.jpg'))
+        png_path = os.path.join(TRAIN_IMAGE_DIR, tsv_file.replace('.tsv', '.png'))
+
+        if os.path.exists(jpg_path):
+            image_path = jpg_path
+        elif os.path.exists(png_path):
+            image_path = png_path
         else:
             print(f"Image for {tsv_file} not found.")
+            continue
+
+        df = load_funsd_document(tsv_path, include_labels=True)
+        document = process_document(df, tsv_path, image_path, tokenizer, label2id)
+        all_documents.append(document)
 
 print(f"Loaded {len(all_documents)} documents")
 

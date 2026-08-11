@@ -12,6 +12,7 @@ The model incorporates the layout information in the token representation itself
 ### 1. Data Preparation
 - Convert raw datasets into the folder structure expected by the pipeline
 - Canonicalize dataset-specific schemas using adapters
+- Handle dataset-specific null, blank, and unused metadata during adapter canonicalization
 - Standardize (scaling, rounding, clipping, and conversion to integer coordinates)
 
 ### 2. Tokenization & Encoding
@@ -37,7 +38,7 @@ The model incorporates the layout information in the token representation itself
 - Apply dataset-specific output formatters for post-processing
 
 ### 6. Validation
-- Ensure alignment between raw data and predictions by checking for length mismatch
+- Ensure alignment between adapter inputs and predictions by checking for length mismatch
 
 ---
 
@@ -72,7 +73,7 @@ The model incorporates the layout information in the token representation itself
 - Different datasets often use different annotation formats and label schemas.
 - To avoid modifying the training and inference pipelines for every dataset, dataset-specific logic is isolated inside adapters and configuration files.
 - Conversion scripts are responsible only for transforming the original annotation format (JSON, TXT, etc.) into a common TSV representation while preserving all available information.
-- Adapters normalize the raw annotations into a common dataframe schema, while configuration files define the entity labels and mappings.
+- Adapters transform the converted TSV data into a common dataframe schema required by the current pipeline, including handling null and blank values and dropping metadata not required by the pipeline.
 - This allows the core preprocessing, chunking, training and prediction logic to remain unchanged across datasets.
 
 ### Dataset-specific output formatting
@@ -93,20 +94,24 @@ layoutlm-ner-project/
 │   │   ├── w2_adapter.py
 │   │   ├── fatura_adapter.py
 │   │   ├── sroie_adapter.py
+│   │   ├── funsd_adapter.py
 │   │
 │   ├── configs/           # Labels and mappings
 │   │   ├── w2_config.py
 │   │   ├── fatura_config.py
 │   │   ├── sroie_config.py
+│   │   ├── funsd_config.py
 │   │
 │   ├── data_preparation/  # Dataset conversion scripts
 │   │   ├── convert_fatura_dataset.py
 │   │   ├── convert_sroie_dataset.py
+│   │   ├── convert_funsd_dataset.py
 │   │
 │   ├── formatters/            # Dataset-specific output formatting
 │   │   ├── w2_formatter.py
 │   │   ├── fatura_formatter.py
 │   │   ├── sroie_formatter.py
+│   │   ├── funsd_formatter.py
 │   │
 │   │
 │   ├── train.py           # Training pipeline
@@ -155,11 +160,22 @@ src/data_preparation/
 
 Example:
 
+```
 python -m src.data_preparation.convert_fatura_dataset
+```
 
+```
 python -m src.data_preparation.convert_sroie_dataset
+```
+
+```
+python -m src.data_preparation.convert_funsd_dataset
+```
+
 
 This generates the required .tsv files and copies the corresponding images into the expected dataset structure.
+
+The pipeline has been integrated with the private W2 dataset and the public FATURA, SROIE, and FUNSD datasets. These datasets exercise different annotation structures while using the same shared preprocessing, training, and inference pipeline.
 
 ---
 
@@ -174,20 +190,20 @@ dataset/
       doc1.tsv
       doc2.tsv
     images/
-      doc1.jpg
-      doc2.jpg
+      doc1.jpg (or doc1.png)
+      doc2.jpg (or doc2.png)
   test/
     boxes_transcripts/
       doc1.tsv
       doc2.tsv
     images/
-      doc1.jpg
-      doc2.jpg
+      doc1.jpg (or doc1.png)
+      doc2.jpg (or doc2.png)
 ```
 
 ### Canonical TSV Format
 
-Each `.tsv` file should contain:
+Each `.tsv` file should contain the fields required by the adapter to produce the pipeline's canonical dataframe:
 
 ```
 [x1, y1, x2, y2, text, label]
@@ -197,6 +213,8 @@ Each `.tsv` file should contain:
 - `text` → token  
 - `label` → entity label (optional during inference)
 
+Dataset conversion may preserve additional source-specific fields in the TSV. The adapter is responsible for selecting and transforming the fields required by the current pipeline.
+
 ---
 
 ## Workflow
@@ -204,19 +222,19 @@ Each `.tsv` file should contain:
 ### Data Preparation
 
 ```
-Raw Dataset → Dataset Conversion → Canonical Dataset
+Raw Dataset → Dataset Conversion → Adapter → Canonical Dataset
 ```
 
 ### Training Flow
 
 ```
-Canonical Dataset → Adapter → Preprocess → Chunk → Dataset Wrapper → LayoutLM → Training
+Converted Dataset → Adapter → Preprocess → Chunk → Dataset Wrapper → LayoutLM → Training
 ```
 
 ### Inference Flow
 
 ```
-Canonical Dataset → Adapter → Preprocess → Chunk → Dataset Wrapper → Predict → Recombine → Formatter → Output
+Converted Dataset → Adapter → Preprocess → Chunk → Dataset Wrapper → Predict → Recombine → Formatter → Output
 ```
 
 ---
@@ -238,6 +256,11 @@ or
 
 ```bash
 python -m src.data_preparation.convert_sroie_dataset
+```
+or
+
+```bash
+python -m src.data_preparation.convert_funsd_dataset
 ```
 
 ### 3. Train the model
@@ -290,11 +313,13 @@ The final output structure is based on dataset-specific formatter modules.
 - Raw datasets are not included in this repository.
 - Dataset conversion must be executed before training.
 - The model assumes OCR tokens and bounding boxes are already available.
-- Input documents should follow a consistent structure (e.g., invoices) for reliable performance.
+- Input documents should follow the annotation and spatial conventions expected by the selected dataset adapter for reliable performance.
 - File naming consistency between images and corresponding annotation files is expected.
 - Bounding box coordinates are scaled into LayoutLM's expected 0-1000 coordinate space during preprocessing.
 - TSV files are loaded using keep_default_na=False to preserve OCR values such as "N/A".
+- Adapters handle dataset-specific null, blank, and unused metadata before data enters the shared preprocessing pipeline.
 - Formatter modules reconstruct entities from token-level predictions and present them after applying dataset-specific post-processing.
+- PNG images are supported in addition to JPG images.
 
 ---
 
@@ -317,7 +342,7 @@ The final output structure is based on dataset-specific formatter modules.
 - Sliding window enhances better boundary context handling, when an entity gets split across chunks.
 
 ### Handling class imbalance
-- To enhance performance on underrepresented labels, explore techniques like weighted loss, data augmentation.
+- To enhance performance on underrepresented labels, explore techniques like weighted loss, oversampling, undersampling, and data augmentation.
 
 ### Device optimization
 - Enable GPU acceleration (CUDA/MPS) if available for faster training and inference.
